@@ -481,7 +481,7 @@ def _checkSetpointValue( setpointvalue, maxvalue ):
     """
     if maxvalue is None:
         raise TypeError('The maxvalue (for the setpoint) must not be None!')
-    minimalmodbus._checkNumerical(setpointvalue, minvalue=0, maxvalue=maxvalue, description='setpoint value')   
+    minimalmodbus._check_numerical(setpointvalue, minvalue=0, maxvalue=maxvalue, description='setpoint value')
 
 
 def _checkTimeValue( timevalue, maxvalue ):   

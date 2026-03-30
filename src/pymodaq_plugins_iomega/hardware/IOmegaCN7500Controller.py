@@ -19,7 +19,8 @@
 #
 # The wrapper inherits of a OmegaCN7500 object that inherits itself of a minimalmodbus one.
 # Added commands are:
-#           ... to do
+#            select_Com_Port
+#            get_firmware_version
 #
 # version:  1.0
 # Date:     26.3.2026
@@ -29,10 +30,12 @@
 
 import serial
 import time
-from omegacn7500 import OmegaCN7500
+from pymodaq_plugins_iomega.hardware.omegacn7500 import OmegaCN7500
+import minimalmodbus
 
 
-def select_Com_Port():
+
+def select_Com_Port() -> serial.Serial.port :
     # Detection of available serial ports
     import serial.tools.list_ports as port_list
     ports = list(port_list.comports())
@@ -45,10 +48,10 @@ def select_Com_Port():
     print('Selected COM Port : ' + selectedComPort)
     return(selectedComPort)
 
-class IOmageCN7500Controller(OmegaCN7500):
+class IOmegaCN7500Controller(OmegaCN7500):
     """
      Serial class controller for the IOmega CN7500 Controller
-            This class relies on OmegaCN7500 (and implicitly on minimlamodbus and serial modules)
+            This class relies on OmegaCN7500 (and implicitly on minimalmodbus and serial modules)
              to communicate with the instrument via RS485 serial transmission
 
      Current actions:
@@ -69,7 +72,34 @@ class IOmageCN7500Controller(OmegaCN7500):
         """
 
         # init parent class by calling the parent constructor
-        OmegaCN7500.__init__(self)
+        OmegaCN7500.__init__(self,'/dev/ttyUSB0', 1)
+
+        # Init a minimalmodabus instrument object
+        #instrument = minimalmodbus.Instrument('/dev/ttyUSB0', 1, minimalmodbus.MODE_ASCII, debug=True)
+
+        self.serial.port = '/dev/ttyUSB0'  # this is the serial port name
+        self.serial.baudrate = 9600  # Baud
+        self.serial.bytesize = 8
+        self.serial.parity = serial.PARITY_NONE
+        self.serial.stopbits = 1
+        self.serial.timeout = 0.5  # seconds
+
+        self.address = 1  # this is the slave address number
+        self.mode = minimalmodbus.MODE_ASCII  # rtu or ascii mode
+        self.clear_buffers_before_each_transaction = True
+
+        """
+        instrument.serial.port = '/dev/ttyUSB0'  # this is the serial port name
+        instrument.serial.baudrate = 9600  # Baud
+        instrument.serial.bytesize = 8
+        instrument.serial.parity = serial.PARITY_NONE
+        instrument.serial.stopbits = 1
+        instrument.serial.timeout = 0.5  # seconds
+
+        instrument.address = 1  # this is the slave address number
+        instrument.mode = minimalmodbus.MODE_ASCII  # rtu or ascii mode
+        instrument.clear_buffers_before_each_transaction = True
+        """
 
         # init object attributes
         #-----------------------
@@ -91,32 +121,26 @@ class IOmageCN7500Controller(OmegaCN7500):
         :return: none
         """
         print('\nDefault settings')
-        print('Port       :',self.port)
-        print('Bauderate  :',self.baudrate)
-        print('Bytesize   :',self.bytesize)
-        print('Parity     :',self.parity)
-        print('Stopbits   :',self.stopbits)
-        print('RTS-CTS    :',self.rtscts)
-        print('TimeOut (read):',self.timeout)
-        print('Inter byte TimeOut :', self.inter_byte_timeout)
+        print('Port       :',self.serial.port)
+        print('Bauderate  :',self.serial.baudrate)
+        print('Bytesize   :',self.serial.bytesize)
+        print('Parity     :',self.serial.parity)
+        print('Stopbits   :',self.serial.stopbits)
+        print('TimeOut (read):',self.serial.timeout)
 
-        self.baudrate = 9600
-        self.bytesize = 8
-        self.parity = 'N'
-        self.stopbits = 1
-        self.rtscts = True
-        self.timeout = 1.0              # 1.0 instead of 0.5 because communication can be slow
-        self.inter_byte_timeout = 1.0   # 1.0 instead of 0.5 because communication can be slow
+        self.serial.baudrate = 9600
+        self.serial.bytesize = 8
+        self.serial.parity = 'N'
+        self.serial.stopbits = 1
+        self.serial.timeout = 0.5             # could be increase to 1.0 for slow communication
 
         print('\nSerial settings')
-        print('Port       :',self.port)
-        print('Bauderate  :',self.baudrate)
-        print('Bytesize   :',self.bytesize)
-        print('Parity     :',self.parity)
-        print('Stopbits   :',self.stopbits)
-        print('RTS-CTS    :', self.rtscts)
-        print('TimeOut (read):', self.timeout)
-        print('Inter byte TimeOut :', self.inter_byte_timeout)
+        print('Port       :',self.serial.port)
+        print('Bauderate  :',self.serial.baudrate)
+        print('Bytesize   :',self.serial.bytesize)
+        print('Parity     :',self.serial.parity)
+        print('Stopbits   :',self.serial.stopbits)
+        print('TimeOut (read):', self.serial.timeout)
 
     def set_baudrate(self, new_baudrate):
         """
@@ -124,19 +148,30 @@ class IOmageCN7500Controller(OmegaCN7500):
         :param new_baudrate:
         :return: none
         """
-        self.baudrate = new_baudrate
+        self.serial.baudrate = new_baudrate
 
     #================================================================
     # Communication functions part
     #================================================================
 
+    def open_communication(self):
+        """
+        Open serial port
+        :return: none
+        """
+        if not self.serial.is_open:
+            self.serial.open()
+        else:
+            self.serial.close()
+            self.serial.open()
 
     def close_communication(self):
         """
         Close serial port
         :return: none
         """
-        to do ... self.close()
+        self.serial.close()
+
 
     # ======================================================================
     # Redefine the IsInitialized method regarding the TMS92 instrument used
@@ -148,9 +183,8 @@ class IOmageCN7500Controller(OmegaCN7500):
          but force the retrun value to True (no identification string in TMS92)
          return: False or True
          """
-         to do ...
          name = self.get_identification_string()
-         # name = "TMS92"
+         # name = "CN7500"
          if self._requestedFirmwareIdentifier in name:
              self._initialized = True
          else:
@@ -165,137 +199,72 @@ class IOmageCN7500Controller(OmegaCN7500):
         Get the firmware name or identification string
         return: identification string
         """
-        to do ...
         return self._identification_string
 
     def get_firmware_version(self) -> str:
         """
-        Get the firmware version of the TMS_92
+        Get the firmware version of the CN7500
         :return: firmware version
         """
         # To simulate a answer (for compatibility with other Chiphy controllers)
-        to do ...
-        return self._requestedFirmwareVersion
+        # return self._requestedFirmwareVersion
+        firmwareVersionHex = hex(self.read_register(0x102F))                    # integer value  ie. 512 -> 0x200
+        versionStr = (firmwareVersionHex[2]) + '.' + (firmwareVersionHex[3])   # extraction version ie.2.0
+        return versionStr    # return a string ie '2.0'
 
     def get_temperature(self):
         """
-        Get the temperature of the Linkam TMS92
-        'T' command
-        -----------
-        In answer to the ‘T’ command the current status and temperature information is returned in the form of
-        the 11 byte string detailed below :
-        Byte 0  Status byte SB1     Information about what the programmer is currently doing
-        Byte 1  Error byte EB1      Indicates sources of errors in the programmer
-        Byte 2  Pump byte PB1       Current speed of the LNP Cooling Unit
-        Byte 3  Gen status GS1      Used by the CSS 450 or the MDS 600 unit for status information
-        Byte 4  Not used
-        Byte 5  Not used
-        Byte 6  MSB         ----|   Temperature *10
-        Byte 7                  |   sent as
-        Byte 8                  |   a signed integer ASCII
-        Byte 9  LSB         ----|   hex value
-        Byte 10 Carriage Return
-
-        Temperature Information
-        -----------------------
-        To save sending the decimal point the temperature is multiplied by 10. This value is converted to a signed
-        integer value covering the range -1960 to 15000 as F858H to 3A98H. These are then transmitted as :
-        MSB ‘F’ 46H     ‘3’     33H
-            ‘8’ 38H     ‘A’     41H
-            ‘5’ 35H     ‘9’     39H
-        LSB ‘8’ 38H     ‘8’     38H
-
-        Status Byte (SB1)
-        ------------------
-        Value   Function
-        01H     Stopped
-
-        20H     Cooling
-        30H     Holding at the limit or limit reached end of a ramp
-        40H     Holding the limit time
-        50H     Holding the current temperature (used in heating/cooling for quick hold)
-
-        Error Byte
-        ----------
-        Bit 0   Cooling rate too fast       Cooling rate cannot be maintained
-        Bit 1   Open circuit                Stage not connected or sensor is open circuit
-        Bit 2   Power surge                 Current protection has been set due to an overload
-        Bit 3   No Exit 300                 TS 1500 tried to exit profile at a temperature >300° (Not allowed)
-        Bit 4   Both stages                 TMS 92 has a TS 1500 and a THM stage connected (Not allowed)
-        Bit 5   Link error                  Problems with the RS 232 data transmission
-        Bit 6   NC
-        Bit 7   1                           Default value
-
-        Pump byte (PB1)
-        ---------------
-        Current pump speed in hex from 0 to 30 with the most significant bit set. The LNP only shows these speeds
-        on the front panel LED’s by five bands, each one comprised of 6 speeds.
-        Value       Function
-        80H         Stopped
-        81H         Minimum speed (Band 1 LED on the front panel of the LNP)
-        9EH         Maximum speed (Band 5 LED on the front panel of the LNP)
-
-        General status (GS1)
-        --------------------
-        Currently not used with our instrument
-
-        :return: temperature in [°C] with information bytes
+        Get the temperature of the CN7500
+        :return: current temperature in [°C] or [F] regarding used unit
         """
-        to do ...
-        answer = self.treat_serial_cmd('T' + '\r', True)
+        answer = self.get_pv()
         #print(self. receive_answer())
         return answer
 
 
-
-    def set_limit(self, limit_value):
+    def get_setpointtemperature(self):
         """
-        Set the target (limit) temperature in °C -value must be an integer !
-
-        EXample: L1125\r --> sets the current limit to 125°C
-        :return: none
+        Get the set point (target) temperature in °C or [F]
+        :return: set point temperature in [°C] or [F] regarding used unit
         """
-        #_limit = 50
-        #cmd = "L1 "+str(limit_value)+"\r"
-        to do ...
-        self.treat_serial_cmd("L1 "+str(int(limit_value))+"\r", False)
-
+        answer = self.get_setpoint()
+        return answer
 
 
     def start(self):
         """
-        Start heating or cooling at the rate specified in R1 and to a limit set by L1
+        Start heating or cooling
         :return: none
         """
-        to do ...
-        self.treat_serial_cmd("S\r", False)
+        self.run()
 
 
-    def heat(self):
+    def heat(self, percent_value):
         """
-        Heat the stage
-        Works only when regulation process on hold !
+        Heat the stage with a percent value that control the time
+        during the heat is set ON.
+        Works only when Control method is on Manual_Tuning
+        Warning: Activate Output value read and write of Output 1 so
+                 heat if configuration is done with output1 <-> heat
+        input: percent_value (0 ..100)
         :return: none
         """
-        to do ...
-        self.treat_serial_cmd("H\r", False)
+        # must multiple value by 10 beacause unit is set to 0.1% --> to do
+        self.write_register(0x1010, percent_value)
 
-    def cool(self):
+    def cool(self, percent_value):
         """
-        Cool the stage
-        Works only when regulation process on hold !
+        Cool the stage with a percent value that control the time
+        during the cool is set ON.
+        Works only when Control method is on Manual_Tuning
+        Warning: Activate Output value read and write of Output 2 so
+                 cool if configuration is done with output2 <-> cool
+        input: percent_value (0 ..100)
         :return: none
         """
-        to do ...
-        self.treat_serial_cmd("C\r", False)
+        # must multiple value by 10 beacause unit is set to 0.1% --> to do
+        self.write_register(0x1011, percent_value)
 
-    def stop(self):
-        """
-        Stop heating or cooling
-        :return: none
-        """
-        to do ...
-        self.treat_serial_cmd("E\r", False)
 
 #==========================================================
 # Main application part
@@ -307,70 +276,50 @@ if __name__ == "__main__":
     print('Python Test Program IOmage CN7500 Controller')
     print('------------------------------------------\n')
 
-    to
-    do...
 
     # selection of a available com port
     selected_Com_Port = select_Com_Port()
 
     # init Linkam_TMS92 com object and open the port !
-    TMS92 = TMS92Controller()
-    TMS92.port = selected_Com_Port
-    TMS92.baudrate = 19200
+    CN7500 = IOmageCN7500Controller()
+    CN7500.port = selected_Com_Port
+    CN7500.baudrate = 9600
 
     # set com port parameters
-    TMS92.set_communication_parameters()
+    CN7500.set_communication_parameters()
 
-    TMS92.open()
-
-    # clear input and ouput buffers to start on clean buffers
-    TMS92.reset_input_buffer()
-    TMS92.reset_output_buffer()
+    #CN7500.serial.open()
 
     #===============================
     # TEST PART
     #===============================
 
 
-    print('------------- LINKAM TMS 92 - TEST COMMUNICATION ---------------')
+    print('------------- IOMEGA CN75000 - TEST COMMUNICATION ---------------')
+
+    input('Press Enter to get firmware version')
+    version = CN7500.get_firmware_version()
+    print(version)
 
     input('Press Enter to get temperature')
-    current_Temperature = TMS92.get_temperature()
+    current_Temperature = CN7500.get_temperature()
     print(current_Temperature)
 
-    print('Longueur')
-    print(len(current_Temperature))
-    for x in current_Temperature:
-        print(x)
+    input('Press Enter to get set point value')
+    set_point = CN7500.get_setpoint()
+    print(set_point)
 
-
-    rate_value = input('Input rate in °C/min')
-    TMS92.set_rate(rate_value)
-    limit_value = input('Input limit value in °C')
-    TMS92.set_limit(limit_value)
+    new_set_point = input('Input set point value in °C')
+    CN7500.set_setpoint(float(new_set_point))
 
     input('Press Enter to start controller')
-    TMS92.start()
+    CN7500.start()
 
     input('Press Enter to get temperature')
-    current_Temperature = TMS92.get_temperature()
-
+    current_Temperature = CN7500.get_temperature()
     print(current_Temperature)
 
-    for x in current_Temperature:
-        print(x)
-
-    input('Press Enter to set pump in manual mode')
-    TMS92.set_pump('Manual')
-
-    input('Press Enter to set pump speed to 1')
-    TMS92.set_pump_speed(1)
-
-    input('Press Enter to set pump speed to 0')
-    TMS92.set_pump_speed(0)
-
     input('Press Enter to stop controller')
-    TMS92.stop()
+    CN7500.stop()
 
-
-    TMS92.close()
+    CN7500.serial.close()
