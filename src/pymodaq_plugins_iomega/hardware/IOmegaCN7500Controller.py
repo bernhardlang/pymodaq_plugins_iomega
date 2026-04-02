@@ -21,6 +21,17 @@
 # Added commands are:
 #            select_Com_Port
 #            get_firmware_version
+#            set_PID
+#            get_PID
+#            AutoTune
+#            getUpperTemperatureLimit
+#            setUpperTemperatureLimit
+#            getLowerTemperatureLimit
+#            setLowerTemperatureLimit
+#            getFirst_Grp_Heating_Cooling_Cycle
+#            setFirst_Grp_Heating_Cooling_Cycle
+#            getSecond_Grp_Heating_Cooling_Cycle
+#            setSecond_Grp_Heating_Cooling_Cycle
 #
 # version:  1.0
 # Date:     26.3.2026
@@ -174,13 +185,13 @@ class IOmegaCN7500Controller(OmegaCN7500):
 
 
     # ======================================================================
-    # Redefine the IsInitialized method regarding the TMS92 instrument used
+    # Redefine the IsInitialized method regarding the CN7500 instrument used
     # ======================================================================
     def IsInitialized(self):
          """
          Do not Check if the controller is initialized by
          comparing the identification string and what it should be
-         but force the retrun value to True (no identification string in TMS92)
+         but force the retrun value to True (no identification string in CN7500)
          return: False or True
          """
          name = self.get_identification_string()
@@ -192,7 +203,7 @@ class IOmegaCN7500Controller(OmegaCN7500):
          return self._initialized
 
     # ================================================================
-    # Redefine get_identification_string (not available in TMS_92)
+    # Redefine get_identification_string (not available in CN7500)
     # ================================================================
     def get_identification_string(self):
         """
@@ -265,6 +276,200 @@ class IOmegaCN7500Controller(OmegaCN7500):
         # must multiple value by 10 beacause unit is set to 0.1% --> to do
         self.write_register(0x1011, percent_value)
 
+    def get_PID_values(self, PID_Profil_No: int):
+        """
+        Get the PID parameters for PID Profil (0..3):
+            Svn:    Target Set Value associated with each PID Profile
+            Pn:     Proportional Band Setting associated with each PID
+            in:     Integral time (reset time) associated with each PID
+            dn:     Derivative time (rate time) associated with each PID
+            iofn:   Integral Deviation Offset Correction associated with each PID
+        :return: dict containing parameters
+        """
+        # Select the PID profil
+        self.write_register(0x101C, value=PID_Profil_No)
+        # Read Svn=set point value (only valid in available range; scale 0.1)
+        Svn_value = self.read_register(0x101D, number_of_decimals=1, signed=True)
+        # Read Pn = proportionnal band (0.1 ... 999.9)
+        Pn_value = self.read_register(0x1009, number_of_decimals=1, signed=True)
+        # Read in = integral time (0 ..  9999)
+        in_value = self.read_register(0x100A, signed=True)
+        # Read dn =  derivative time (0 .. 9999)
+        dn_value = self.read_register(0x100B, signed=True)
+        # Read iof = integral deviation settings (0 .. 100% unit 0.1%)
+        iofn_value = self.read_register(0x100C, number_of_decimals=1, signed=True)
+        PID_values = {"PID_no": PID_Profil_No,
+                      "Svn":    Svn_value,
+                      "Pn":     Pn_value,
+                      "in":     in_value,
+                      "dn":     dn_value,
+                      "iofn":   iofn_value}
+        print(PID_values)
+        return PID_values
+
+    def set_PID_values(self, PID_param: dict):
+        """
+        Set the PID parameters for PID Profil (0..3):
+            Svn:    Target Set Value associated with each PID Profile
+            Pn:     Proportional Band Setting associated with each PID
+            in:     Integral time (reset time) associated with each PID
+            dn:     Derivative time (rate time) associated with each PID
+            iofn:   Integral Deviation Offset Correction associated with each PID
+        :return:
+        """
+        # Select the PID profil
+        self.write_register(0x101C, value=PID_param["PID_no"])
+        # Write Svn=set point value (only valid in available range; scale 0.1)
+        self.write_register(0x101D, value=PID_param["Svn"], number_of_decimals=1, signed=True)
+        # Write Pn = propotionnal band (0.1 ... 999.9)
+        self.write_register(0x1009, value=PID_param["Pn"], number_of_decimals=1, signed=True)
+        # Write in = integral time (0 ..  9999)
+        self.write_register(0x100A, value=PID_param["in"], signed=True)
+        # Write dn =  dirivative time (0 .. 9999)
+        self.write_register(0x100B, value=PID_param["dn"], signed=True)
+        # Write iof = integral deviation settings (0 .. 100% unit 0.1%)
+        self.write_register(0x100C, value=PID_param["iofn"], number_of_decimals=1, signed=True)
+
+
+    def get_Additionnal_Control_Parameters(self):
+        """
+        Get the additionnal control parameters:
+            Pdof:   PD Offset Correction Setting
+            HtS:    Heating Hysteresis (Differential) Setting
+            CtS:    Cooling Hysteresis (Differential) Setting.
+            Coeff:  Proportional Band Coefficient.The setting of COEF when Dual Loop output control are used
+            DeAd:   Dead Band
+        :return: dict containing parameters
+        """
+
+        # Read Pdof=PD Offset Correction Setting. only available when control
+        # mode is set to PID and integral time = 0. See Programming
+        # and Operation of PID function for moving information. (0~100%, unit is 0.1%)
+        Pdof_value = self.read_register(0x100D, number_of_decimals=1, signed=True)
+
+        # Read HtS = Heating Hysteresis (Differential) Setting. Sets the value for the
+        # amount of difference between the turn off point (set point) and
+        # the turn on point. Figure A shows the output behavior for a
+        # heating (reverse acting) application. Only available when
+        # control mode set to on/off control. (0 ~ 9999)
+        HtS_value = self.read_register(0x1010,  signed=True)
+
+        # Read CtS = Cooling Hysteresis (Differential) Setting. Sets the value for the
+        # amount of difference between the turn off point (set point) and
+        # the turn on point. Figure A shows the output behavior for a
+        # cooling (direct acting) application. Only available when control
+        # mode set to on/off control. (0 ~ 9999)
+        CtS_value = 10*self.read_register(0x1011, signed=True)
+
+        # Read Coeff = Proportional Band Coefficient. Sets the value of the
+        # proportional band for output 2. The proportional band of
+        # output 2 is equal to the proportional band of output 1
+        # multiplied by the proportional band coefficient. This parameter
+        # is only available when the control mode is set to PID and Dual
+        # Loop Output Control. (0.01 ~ 99.99)
+        Coeff_value = self.read_register(0x100E, number_of_decimals=2, signed=True)
+
+        # Read DeAd = Dead Band. The zone centered on the set point in which the
+        # control is thought to be at the desired set level. The outputs
+        # will be turned off at this point unless there is an integral
+        # deviation offset or the dead band is negative. This parameter
+        # is only shown when the control is set to Dual Loop Output
+        # Control. (-999 ~ 9999)
+        dEAd_value = self.read_register(0x100F, signed=True)
+
+        Additionnal_Ctrl_Param_values = {"Pdof":   Pdof_value,
+                                         "HtS":    HtS_value,
+                                         "CtS":    CtS_value,
+                                         "Coeff":  Coeff_value,
+                                         "dEAd":   dEAd_value}
+
+        print(Additionnal_Ctrl_Param_values)
+        return Additionnal_Ctrl_Param_values
+
+    def set_Additionnal_Control_Parameters(self, Additionnal_Ctrl_Param_values: dict):
+        """
+        Set the additionnal Control parameters:
+            Pdof:   PD Offset Correction Setting
+            HtS:    Heating Hysteresis (Differential) Setting
+            CtS:    Cooling Hysteresis (Differential) Setting.
+            Coeff:  Proportional Band Coefficient.The setting of COEF when Dual Loop output control are used
+            DeAd:   Dead Band
+        """
+        # Write Pdof=PD Offset Correction Setting (0~100%, unit is 0.1%)
+        self.write_register(0x100D, Additionnal_Ctrl_Param_values["Pdof"], number_of_decimals=1, signed=True)
+        # Write HtS = Heating Hysteresis (Differential) Setting (0 ~ 9999)
+        self.write_register(0x1010, Additionnal_Ctrl_Param_values["HtS"], signed=True)
+        # Write CtS = Cooling Hysteresis (Differential) Setting (0 ~ 9999)
+        self.write_register(0x1011, Additionnal_Ctrl_Param_values["CtS"], signed=True)
+        # Write Coeff =  Proportional Band Coefficient (0.01 ~ 99.99)
+        self.write_register(0x100E, Additionnal_Ctrl_Param_values["Coeff"], number_of_decimals=2, signed=True)
+        # Write DeAd = Dead Band (-999 ~ 9999)
+        self.write_register(0x100F, Additionnal_Ctrl_Param_values["dEAd"], signed=True)
+
+    def AutoTune(self, State: bool):
+        """
+        Trun ON or OFF the AutoTune function
+        :param State: True or False regarding the desired Autotune function state
+        :return:
+        """
+        if State:
+            self.write_bit(0x0813,1)
+        else:
+            self.write_bit(0x0813, 0)
+
+    def getUpperTemperatureLimit(self):
+        """
+        Get the Upper temperature limit
+        :return: the upper temperature limit
+        """
+        return self.read_register(0x1002, number_of_decimals=1, signed=True)
+
+    def setUpperTemperatureLimit(self, Upper_Temp: float):
+        """
+        Set the Upper temperature limit (int)
+        :return:
+        """
+        self.write_register(0x1002, Upper_Temp, number_of_decimals=1, signed=True)
+
+    def getLowerTemperatureLimit(self):
+        """
+        Get the Upper temperature limit
+        :return: the lower temperature limit
+        """
+        return self.read_register(0x1003, number_of_decimals=1, signed=True)
+
+    def setLowerTemperatureLimit(self, Lower_Temp: float):
+        """
+        Set the Lower temperature limit (int)
+        :return:
+        """
+        self.write_register(0x1003, Lower_Temp, number_of_decimals=1, signed=True)
+
+    def getFirst_Grp_Heating_Cooling_Cycle(self):
+        """
+        Get the 1st group heating-cooling cycle in [s] (float)
+        :return: 1st group heating-cooling cycle in [s]
+        """
+        return self.read_register(0x1007, 1, signed=True)
+
+    def setFirst_Grp_Heating_Cooling_Cycle(self, first_cycle: float):
+        """
+        Set the 1st group heating-cooling cycle in [s] (float: min 0.5)
+        """
+        self.write_register(0x1007, first_cycle, number_of_decimals=1, signed=True)
+
+    def getSecond_Grp_Heating_Cooling_Cycle(self):
+        """
+        Get the 2nd group heating-cooling cycle in [s] (float)
+        :return: 2nd group heating-cooling cycle in [s]
+        """
+        return self.read_register(0x1008, 1, signed=True)
+
+    def setSecond_Grp_Heating_Cooling_Cycle(self, second_cycle: float):
+        """
+        Set the 2nd group heating-cooling cycle in [s] (float: min 0.5)
+        """
+        self.write_register(0x1008, second_cycle, number_of_decimals=1, signed=True)
 
 #==========================================================
 # Main application part
@@ -273,15 +478,15 @@ class IOmegaCN7500Controller(OmegaCN7500):
 if __name__ == "__main__":
 
     # Press the green button in the gutter to run the script.
-    print('Python Test Program IOmage CN7500 Controller')
+    print('Python Test Program IOmega CN7500 Controller')
     print('------------------------------------------\n')
 
 
     # selection of a available com port
     selected_Com_Port = select_Com_Port()
 
-    # init Linkam_TMS92 com object and open the port !
-    CN7500 = IOmageCN7500Controller()
+    # init CN7500 com object and open the port !
+    CN7500 = IOmegaCN7500Controller()
     CN7500.port = selected_Com_Port
     CN7500.baudrate = 9600
 
