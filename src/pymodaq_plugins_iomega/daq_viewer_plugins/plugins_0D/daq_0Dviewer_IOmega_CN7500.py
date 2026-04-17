@@ -69,7 +69,7 @@ class DAQ_0DViewer_IOmega_CN7500(DAQ_Viewer_base):
 
         elif param.name() == "CN7500_set_setpoint":
             setpointvalue = self.settings.child('regulation', 'CN7500_set_setpoint').value()
-            self.controller.set_setpoint(setpointvalue)
+            self.controller.set_TemperatureSetpoint(setpointvalue)
 
         elif param.name() == "CN7500_run":
             if param.value():
@@ -130,7 +130,7 @@ class DAQ_0DViewer_IOmega_CN7500(DAQ_Viewer_base):
             self.settings.child('regulation').show()
             # set the initial setpoint value
             setpointvalue = self.settings.child('regulation', 'CN7500_set_setpoint').value()
-            self.controller.set_setpoint(setpointvalue)
+            self.controller.set_TemperatureSetpoint(setpointvalue)
 
         info = "IOmega CN7500 - Viewer initialization"
         # initialized = self.controller.a_method_or_atttribute_to_check_if_init()
@@ -157,7 +157,7 @@ class DAQ_0DViewer_IOmega_CN7500(DAQ_Viewer_base):
         # synchrone version (blocking function)
         # ata_tot = self.controller.your_method_to_start_a_grab_snap()
         currentSetPoint = self.controller.get_setpoint()
-        currentProcessTemperatureValue = self.controller.get_temperature()
+        currentProcessTemperatureValue = self.controller.get_Current_Temperature()
         data_tot = [np.array([currentProcessTemperatureValue]), np.array([currentSetPoint])]
 
         self.dte_signal.emit(DataToExport(name='CN7500',

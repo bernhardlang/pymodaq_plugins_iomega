@@ -6,7 +6,7 @@ from pymodaq.control_modules.move_utility_classes import (DAQ_Move_base, comon_p
 from pymodaq_utils.utils import ThreadCommand  # object used to send info back to the main thread
 from pymodaq_gui.parameter import Parameter
 
-from pymodaq_plugins_iomega.hardware.IOmegaCN7500Controller import IOmegaCN7500Controller
+from pymodaq_plugins_iomega.hardware.IOmegaCN7500Controller import IOmegaCN7500Controller, IOmegaStatus
 
 
 class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
@@ -33,8 +33,8 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
             com_list.append(p.device)
 
     PID_Profil_list = [0, 1, 2, 3]
-    #Mode_List = {0: 'PID', 1: 'ON/OFF',  2: 'Manual Tuning',  3: 'Program'}
-    Mode_List = ['PID', 'ON/OFF', 'Manual', 'Program']
+    Ctrl_Method_List = ['PID', 'ON/OFF', 'Manual', 'Program']
+    Heating_Cooling_Ctrl_List = ['Heating', 'Cooling', 'Heating-Cooling', 'Cooling-Heating']
 
     is_multiaxes = False  # for your plugin set to True if this plugin is controlled for a multiaxis controller
     _axis_names: Union[List[str], Dict[str, int]] = ['Axis1', 'Axis2']  # for your plugin: complete the list
@@ -51,18 +51,26 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
 
               # Regulation
               {'title': 'Regulation:', 'name': 'regulation', 'type': 'group', 'children': [
-                {'title': 'Setpoint:', 'name': 'CN7500_set_setpoint', 'type': 'float', 'value': 25, 'default': 25, 'min': 20,
-                'max': 50, 'tip': 'set the temperature setpoint'},
+                {'title': 'Setpoint:', 'name': 'CN7500_set_setpoint', 'type': 'float', 'value': 25, 'default': 25, 'min': -200,
+                'max': 1000, 'tip': 'set the temperature setpoint'},
                 {'title': 'Run:', 'name': 'CN7500_run', 'type': 'led_push', 'value': False, 'default': False,
                 'tip': 'Turn the CN7500 regulation ON or OFF'}
               ]},
-              
+
+              # Status
+              {'title': 'Status:', 'name': 'status', 'type': 'group', 'children': [
+                  {'title': 'deg °C:', 'name': 'CN7500_status_unit', 'type': 'led', 'value': True, 'readonly': True, 'tip': '°C or F temperature unit'},
+                  {'title': 'Out 1:', 'name': 'CN7500_status_Out1', 'type': 'led', 'value': False, 'readonly': True,  'tip': 'Output 1 is running'},
+                  {'title': 'Out 2:', 'name': 'CN7500_status_Out2', 'type': 'led', 'value': False, 'readonly': True,  'tip': 'Output 2 is running'},
+                  {'title': 'Auto Tune:', 'name': 'CN7500_status_AT', 'type': 'led', 'value': False, 'readonly': True,  'tip': 'Auto Tune is running'}
+              ]},
+
               # CN7500 parameters
               {'title': 'CN7500 Parameters:', 'name': 'CN7500_Internal_Param', 'type': 'group', 'expanded': False, 'children': [
 
                 # Modes parameters
                 {'title': 'Modes Parameters:', 'name': 'CN7500_Modes_Param', 'type': 'group', 'expanded': False, 'children': [
-                    {'title': 'Control_Modes', 'name': 'CN7500_Modes', 'type': 'list', 'limits': Mode_List},
+                    {'title': 'Control_Modes', 'name': 'CN7500_Modes', 'type': 'list', 'limits': Ctrl_Method_List},
                     {'title': 'Auto Tune', 'name': 'Auto_Tune', 'type':'led_push', 'value': False, 'default': False,
                     'tip': 'Run Auto-tune process'},
                 ]},
@@ -93,7 +101,7 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
                     'tip': '2nd group of Heating/Cooling control cycle'}
                 ]},
 
-                  # PID parameters
+                # PID parameters
                 {'title': 'PID Parameters:', 'name': 'CN7500_PID_Param', 'type': 'group', 'expanded': False, 'children': [
                     {'title': 'Read:', 'name': 'PID_read', 'type': 'led_push', 'value': False, 'default': False,
                     'tip': 'Read the PID parameters'},
@@ -131,6 +139,23 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
                     'tip': 'Proportional band coefficient for output 2'},
                     {'title': 'DeAd', 'name': 'Ctrl_param_DeAd', 'type': 'float', 'value': 0,
                     'tip': 'Dead band'}
+                ]},
+
+                # System Configuration parameters
+                {'title': 'System Configuration Parameters:', 'name': 'CN7500_System_Config_param', 'type': 'group', 'expanded': False, 'children': [
+                    {'title': 'Read:', 'name': 'System_Config_read', 'type': 'led_push', 'value': False, 'default': False,
+                     'tip': 'Read the additionnal Control parameters'},
+                    {'title': 'Write:', 'name': 'System_Config_write', 'type': 'led_push', 'value': False, 'default': False,
+                     'tip': 'Write the additionnal Control parameters'},
+
+                    {'title': 'Communication Write Enable', 'name': 'Comm_Write_Enable', 'type': 'led_push', 'value': True, 'default': True,
+                     'tip': 'Communication write-in selection: Enable or Disable'},
+                    {'title': 'Setting Lock:', 'name': 'Setting_Lock_State', 'type': 'int', 'value': 0,
+                     'tip': '0 : Normal, 1 : All setting lock, 11 : Lock others than SV value'},
+                    {'title': 'Temperature Unit', 'name': 'Temperature_Unit_Deg_C', 'type': 'led_push', 'value': True, 'default': True,
+                     'tip': 'Temperature Unit Selection: °C=On F=Off'},
+                    {'title': 'Heating/Cooling control selection', 'name': 'H_C_Ctrl_Selection', 'type': 'list', 'limits': Heating_Cooling_Ctrl_List,
+                     'tip': '0: Heating, 1: Cooling, 2: Heating/Cooling, 3: Cooling/Heating'},
                 ]}
 
               ]}
@@ -147,15 +172,42 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
         pass
 
     def get_actuator_value(self):
-        """Get the current value from the hardware with scaling conversion.
-
+        """ Get the current value from the hardware with scaling conversion.
+        In this case it is the current temperature
+        Also gather status information and update setting status LEDs
         Returns
         -------
         float: The position obtained after scaling conversion.
         """
 
-        pos = DataActuator(data=self.controller.get_temperature())
+        pos = DataActuator(data=self.controller.get_Current_Temperature())
         pos = self.get_position_with_scaling(pos)
+
+        # read status
+        current_status = self.controller.get_status()
+        CN75000IOmegaStatus = IOmegaStatus(current_status)
+
+        if (CN75000IOmegaStatus.DEG_C in CN75000IOmegaStatus):
+            self.settings.child('status', 'CN7500_status_unit').setValue(True)
+        else:
+            self.settings.child('status', 'CN7500_status_unit').setValue(False)
+
+        if (CN75000IOmegaStatus.OUT1 in CN75000IOmegaStatus):
+            self.settings.child('status', 'CN7500_status_Out1').setValue(True)
+        else:
+            self.settings.child('status', 'CN7500_status_Out1').setValue(False)
+
+        if (CN75000IOmegaStatus.OUT2 in CN75000IOmegaStatus):
+            self.settings.child('status', 'CN7500_status_Out2').setValue(True)
+        else:
+            self.settings.child('status', 'CN7500_status_Out2').setValue(False)
+
+        if (CN75000IOmegaStatus.AT in CN75000IOmegaStatus):
+            self.settings.child('status', 'CN7500_status_AT').setValue(True)
+        else:
+            self.settings.child('status', 'CN7500_status_AT').setValue(False)
+
+
         return pos
 
     def user_condition_to_reach_target(self) -> bool:
@@ -199,7 +251,7 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
 
         elif param.name() == "CN7500_set_setpoint":
             setpointvalue = self.settings.child('regulation', 'CN7500_set_setpoint').value()
-            self.controller.set_setpoint(setpointvalue)
+            self.controller.set_TemperatureSetpoint(setpointvalue)
 
         elif param.name() == "CN7500_run":
             if param.value():
@@ -223,7 +275,6 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
             else:
                 self.controller.AutoTune(False)
                 self.settings.child('CN7500_Internal_Param', 'CN7500_Modes_Param','Auto_Tune').setValue(False)
-
 
         elif param.name() == "Temperature_Range_read":
             # check state button
@@ -322,10 +373,71 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
 
         elif param.name() == "Additionnal_Ctrl_read":
             # todo
-            print('Additionnal Ctr param read')
+            # check state button
+            if param.value():
+                # Get Additionnal Control parameters from controller
+                Additionnal_Ctrl_param = self.controller.get_Additionnal_Control_Parameters()
+                # Update GUI
+                self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Ctrl_param_Pdof').setValue(Additionnal_Ctrl_param["Pdof"])
+                self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Ctrl_param_HtS').setValue(Additionnal_Ctrl_param["HtS"])
+                self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Ctrl_param_CtS').setValue(Additionnal_Ctrl_param["CtS"])
+                self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Ctrl_param_Coeff').setValue(Additionnal_Ctrl_param["Coeff"])
+                self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Ctrl_param_DeAd').setValue(Additionnal_Ctrl_param["dEAd"])
+
+                time.sleep(0.25)
+                self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Additionnal_Ctrl_read').setValue(False)
+                print('Additionnal Ctr param read')
+
         elif param.name() == "Additionnal_Ctrl_write":
-            # todo
+            # check state button
+            if param.value():
+                # write Additionnal Control parameters
+                Additionnal_Ctrl_param = {
+                    "Pdof":     self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Ctrl_param_Pdof').value(),
+                    "HtS":      self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Ctrl_param_HtS').value(),
+                    "CtS":      self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Ctrl_param_CtS').value(),
+                    "Coeff":    self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Ctrl_param_Coeff').value(),
+                    "dEAd":     self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Ctrl_param_DeAd').value()}
+
+                self.controller.set_Additionnal_Control_Parameters(Additionnal_Ctrl_param)
+                time.sleep(0.25)
+                # Update GUI
+                self.settings.child('CN7500_Internal_Param', 'CN7500_Additionnal_Ctrl_param', 'Additionnal_Ctrl_write').setValue(False)
+
             print('Additionnal Ctr param write')
+
+        elif param.name() == "System_Config_read":
+            # check state button
+            if param.value():
+               # Get System Configuration parameters from controller
+                System_Config_param = self.controller.get_System_Configuration_Parameters()
+                # Update GUI
+                self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Comm_Write_Enable').setValue(System_Config_param["Comm_Enable"])
+                self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Setting_Lock_State').setValue(System_Config_param["Set_Lock_State"])
+                self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Temperature_Unit_Deg_C').setValue(System_Config_param["Temp_Unit"])
+                self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'H_C_Ctrl_Selection').setValue(System_Config_param["Heat_Cool_Setting"])
+
+                time.sleep(0.25)
+                self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'System_Config_read').setValue(False)
+                print('Additionnal Ctr param read')
+
+        elif param.name() == "System_Config_write":
+            # check state button
+            if param.value():
+                # write System Configuration parameters
+                System_Config_param = {
+                    "Comm_Enable":      self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Comm_Write_Enable').value(),
+                    "Set_Lock_State":   self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Setting_Lock_State').value(),
+                    "Temp_Unit":        self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Temperature_Unit_Deg_C').value(),
+                    "Heat_Cool_Setting":self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'H_C_Ctrl_Selection').value()}
+
+                self.controller.set_System_Configuration_Parameters(System_Config_param)
+                time.sleep(0.25)
+                # Update GUI
+                self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'System_Config_write').setValue(False)
+
+            print('Additionnal Ctr param write')
+
         else:
             pass
 
@@ -366,7 +478,7 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
             self.settings.child('regulation').show()
             # set the initial limit value
             setpointvalue = self.settings.child('regulation', 'CN7500_set_setpoint').value()
-            self.controller.set_setpoint(setpointvalue)
+            self.controller.set_TemperatureSetpoint(setpointvalue)
 
         # initialized = self.controller.a_method_or_atttribute_to_check_if_init()  # todo
         return info, initialized
@@ -385,7 +497,7 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
 
         float_setpoint_value = float(value.value('°C'))
         self.settings.child('regulation', 'CN7500_set_setpoint').setValue(float_setpoint_value)
-        self.controller.set_setpoint(float_setpoint_value)  # when writing your own plugin replace this line
+        self.controller.set_TemperatureSetpoint(float_setpoint_value)  # when writing your own plugin replace this line
         self.emit_status(ThreadCommand('Update_Status', ['set new setpoint temperature']))
 
     def move_rel(self, value: DataActuator):
@@ -401,12 +513,12 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
 
         float_setpoint_value = int(self.target_value.value('°C'))
         self.settings.child('regulation', 'CN7500_set_setpoint').setValue(float_setpoint_value)
-        self.controller.set_setpoint(float_setpoint_value)  # when writing your own plugin replace this line
+        self.controller.set_TemperatureSetpoint(float_setpoint_value)  # when writing your own plugin replace this line
         self.emit_status(ThreadCommand('Update_Status', ['set a new setpoint temperature relative one']))
 
     def move_home(self):
         """Call the reference method of the controller"""
-        self.controller.set_setpoint(25)  # when writing your own plugin replace this line home = 25°C
+        self.controller.set_TemperatureSetpoint(25)  # when writing your own plugin replace this line home = 25°C
         self.settings.child('regulation', 'CN7500_set_setpoint').setValue(25)
         self.emit_status(ThreadCommand('Update_Status', ['set a setpoint to room temperature']))
 

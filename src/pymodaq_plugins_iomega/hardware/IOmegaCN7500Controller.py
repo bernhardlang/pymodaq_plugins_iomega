@@ -21,9 +21,22 @@
 # Added commands are:
 #            select_Com_Port
 #            get_firmware_version
+#            get_Current_Temperature    (allow negative temperature)
+#            get_TemperatureSetpoint    (allow negative temperature)
+#            set_TemperatureSetpoint    (allow negative temperature)
+#            start
+#            get_Output_PWM_1
+#            set_Output_PWM_1
+#            get_Output_PWM_2
+#            set_Output_PWM_2
+#            get_Control_Method
+#            set_Control_Method
 #            set_PID
 #            get_PID
 #            AutoTune
+#
+
+
 #            getUpperTemperatureLimit
 #            setUpperTemperatureLimit
 #            getLowerTemperatureLimit
@@ -32,6 +45,11 @@
 #            setFirst_Grp_Heating_Cooling_Cycle
 #            getSecond_Grp_Heating_Cooling_Cycle
 #            setSecond_Grp_Heating_Cooling_Cycle
+#            get_Heating_Output_Pwd_Percent
+#            set_Heating_Output_Pwd_Percent
+#            get_Cooling_Output_Pwd_Percent
+#            set_Cooling_Output_Pwd_Percent
+#            get_status
 #
 # version:  1.0
 # Date:     26.3.2026
@@ -43,6 +61,18 @@ import serial
 import time
 from pymodaq_plugins_iomega.hardware.omegacn7500 import OmegaCN7500
 import minimalmodbus
+from enum import Flag
+
+class IOmegaStatus(Flag):
+    # Class defining the status of the IOmega instrument
+    ALARM3 = 1 << 0     # 1
+    ALARM2 = 1 << 1     # 2
+    DEG_C  = 1 << 2     # 4
+    DEG_F  = 1 << 3     # 8
+    ALARM1 = 1 << 4     # 16
+    OUT2   = 1 << 5     # 32
+    OUT1   = 1 << 6     # 64
+    AT     = 1 << 7     # 128
 
 
 
@@ -70,6 +100,14 @@ class IOmegaCN7500Controller(OmegaCN7500):
             - set IOmega CN7500 target temperature for heating-cooling
             - start-stop mecanisms
     """
+
+    ctrl_Method_Dict = {0: 'PID',
+                        1: 'ON/OFF',
+                        2: 'Manual',
+                        3: 'Program'
+                       }
+
+    heating_Cooling_Ctrl_List = ['Heating', 'Cooling', 'Heating-Cooling', 'Cooling-Heating']
 
     def __init__(self):  # object constructor
         """ method called at object creation (implementation)
@@ -99,19 +137,6 @@ class IOmegaCN7500Controller(OmegaCN7500):
         self.mode = minimalmodbus.MODE_ASCII  # rtu or ascii mode
         self.clear_buffers_before_each_transaction = True
 
-        """
-        instrument.serial.port = '/dev/ttyUSB0'  # this is the serial port name
-        instrument.serial.baudrate = 9600  # Baud
-        instrument.serial.bytesize = 8
-        instrument.serial.parity = serial.PARITY_NONE
-        instrument.serial.stopbits = 1
-        instrument.serial.timeout = 0.5  # seconds
-
-        instrument.address = 1  # this is the slave address number
-        instrument.mode = minimalmodbus.MODE_ASCII  # rtu or ascii mode
-        instrument.clear_buffers_before_each_transaction = True
-        """
-
         # init object attributes
         #-----------------------
         # Firmware identifier and requested minimal version (fake ones !)
@@ -121,6 +146,67 @@ class IOmegaCN7500Controller(OmegaCN7500):
         # hardware initialisation flag
         self._initialized = False
 
+        # internal CN75000 attributes
+        self._control_Method = 'PID'
+
+        self._current_Temperature = 25
+        self._current_TemperatureSetpoint = 25
+
+        self._upper_temperature_Limit = 1000
+        self._lower_temperature_Limit = -200
+
+        self._first_Grp_Heating_Heating_Cycle = 0.5
+        self._first_Grp_Heating_Cooling_Cycle = 0.5
+
+        self._output_PWM_1 = 0
+        self._output_PWM_2 = 0
+
+        self._additionnal_Ctrl_Param_values = {"Pdof":  0,   # PD Offset Correction Setting. only available when control mode is set to PID and integral time = 0
+                                               "HtS":   0,   # Heating Hysteresis (Differential) Setting
+                                               "CtS":   0,   # Cooling Hysteresis (Differential) Setting
+                                               "Coeff": 1,   # Proportional Band Coefficient. Sets the value of the proportional band for output 2.
+                                               "dEAd":  0}   # Dead Band. The zone centered on the set point in which the control is thought to be at the desired set level.
+
+        self._system_Config_Ctrl_Param_values = {"Comm_Enable":         None,
+                                                 "Set_Lock_State":      None,
+                                                 "Temp_Unit":           None,
+                                                 "Heat_Cool_Setting":   None}
+
+
+        self._PID_Settings = {
+                            "PID0": {
+                                "PID_no":   0,      # Target Set Value associated with PID0
+                                "Svn":      None,   # Proportional Band Setting associated with PID0
+                                "Pn":       None,   # Integral time (reset time) associated with PID0
+                                "in":       None,   # Integral time (reset time) associated with PID0
+                                "dn":       None,   # Derivative time (rate time) associated with PID0
+                                "iofn":     None    # Integral Deviation Offset Correction associated with PID0
+                            },
+                            "PID1": {
+                                "PID_no":   1,
+                                "Svn":      None,
+                                "Pn":       None,
+                                "in":       None,
+                                "dn":       None,
+                                "iofn":     None
+                            },
+                            "PID2": {
+                                "PID_no":   2,
+                                "Svn":      None,
+                                "Pn":       None,
+                                "in":       None,
+                                "dn":       None,
+                                "iofn":     None
+                            },
+                            "PID3": {
+                                "PID_no":   3,
+                                "Svn":      None,
+                                "Pn":       None,
+                                "in":       None,
+                                "dn":       None,
+                                "iofn":     None
+                            }
+                        }
 
     # ================================================================
     # Serial configuration
@@ -132,25 +218,25 @@ class IOmegaCN7500Controller(OmegaCN7500):
         :return: none
         """
         print('\nDefault settings')
-        print('Port       :',self.serial.port)
-        print('Bauderate  :',self.serial.baudrate)
-        print('Bytesize   :',self.serial.bytesize)
-        print('Parity     :',self.serial.parity)
-        print('Stopbits   :',self.serial.stopbits)
-        print('TimeOut (read):',self.serial.timeout)
+        print('Port       :',   self.serial.port)
+        print('Bauderate  :',   self.serial.baudrate)
+        print('Bytesize   :',   self.serial.bytesize)
+        print('Parity     :',   self.serial.parity)
+        print('Stopbits   :',   self.serial.stopbits)
+        print('TimeOut (read):', self.serial.timeout)
 
-        self.serial.baudrate = 9600
-        self.serial.bytesize = 8
-        self.serial.parity = 'N'
-        self.serial.stopbits = 1
-        self.serial.timeout = 0.5             # could be increase to 1.0 for slow communication
+        self.serial.baudrate    = 9600
+        self.serial.bytesize    = 8
+        self.serial.parity      = 'N'
+        self.serial.stopbits    = 1
+        self.serial.timeout     = 0.5             # could be increase to 1.0 for slow communication
 
         print('\nSerial settings')
-        print('Port       :',self.serial.port)
-        print('Bauderate  :',self.serial.baudrate)
-        print('Bytesize   :',self.serial.bytesize)
-        print('Parity     :',self.serial.parity)
-        print('Stopbits   :',self.serial.stopbits)
+        print('Port       :',   self.serial.port)
+        print('Bauderate  :',   self.serial.baudrate)
+        print('Bytesize   :',   self.serial.bytesize)
+        print('Parity     :',   self.serial.parity)
+        print('Stopbits   :',   self.serial.stopbits)
         print('TimeOut (read):', self.serial.timeout)
 
     def set_baudrate(self, new_baudrate):
@@ -223,24 +309,36 @@ class IOmegaCN7500Controller(OmegaCN7500):
         versionStr = (firmwareVersionHex[2]) + '.' + (firmwareVersionHex[3])   # extraction version ie.2.0
         return versionStr    # return a string ie '2.0'
 
-    def get_temperature(self):
+    # ================================================================
+    # Methods to manage CN7500
+    # ================================================================
+    def get_Current_Temperature(self):
         """
         Get the temperature of the CN7500
         :return: current temperature in [°C] or [F] regarding used unit
         """
-        answer = self.get_pv()
-        #print(self. receive_answer())
-        return answer
+        self._current_Temperature = self.read_register( 0x1000, 1, signed=True)
+        return self._current_Temperature
 
 
-    def get_setpointtemperature(self):
+    def get_TemperatureSetpoint(self):
         """
         Get the set point (target) temperature in °C or [F]
         :return: set point temperature in [°C] or [F] regarding used unit
         """
-        answer = self.get_setpoint()
-        return answer
+        self._current_TemperatureSetpoint = self.read_register(0x1001, 1, signed=True)
+        return self._current_TemperatureSetpoint
 
+    def set_TemperatureSetpoint(self, setpointvalue):
+        """Set the setpoint (target) temperature in °C or [F]
+
+        Args:
+            setpointvalue (float): Setpoint [most often in degrees]
+            Warning: temperature set point can be negative
+
+        """
+        self._current_TemperatureSetpoint = setpointvalue
+        self.write_register(0x1001, setpointvalue, 1, signed=True)
 
     def start(self):
         """
@@ -249,32 +347,95 @@ class IOmegaCN7500Controller(OmegaCN7500):
         """
         self.run()
 
-
-    def heat(self, percent_value):
+    def get_Control_Method(self):
         """
-        Heat the stage with a percent value that control the time
-        during the heat is set ON.
+        Get the selected control method: 'PID', 'ON/OFF', 'Manual', 'Program'
+        :return: control method
+        """
+        self._control_Method = self.ctrl_Method_Dict[self.read_register(0x1005)]
+        return self._control_Method
+
+    def set_Control_Method(self, control_Method):
+        """
+        Set the selected control method: 'PID', 'ON/OFF', 'Manual', 'Program'
+        :return: control method
+        """
+        for k, v in self.ctrl_Method_Dict.items():
+            if v == control_Method:
+               key = k
+               break
+
+        self._control_Method = self.ctrl_Method_Dict[key]
+        self.write_register(0x1005,key)
+
+    def get_Output_PWM_1(self):
+        """
+        Get the output PWM stage percent value that control the time
+        during the power is set ON.
+        Warning: Activate Output value read Output 1 so heat control
+                 if configuration is done with output1 <-> heat
+        input: percent_value (0 ..100)
+        :return: none
+        """
+        # must multiple value by 10 because unit is set to 0.1% --> to do, to check
+        self._output_PWM_1 = self.read_register(0x1012, number_of_decimals=1)
+        return self._output_PWM_1
+
+    def set_Output_PWM_1(self, percent_value):
+        """
+        Set the output PWM stage with a percent value that control the time
+        during the power is set ON.
         Works only when Control method is on Manual_Tuning
         Warning: Activate Output value read and write of Output 1 so
                  heat if configuration is done with output1 <-> heat
+                 activation possible ONLY when Manual Tuning Mode and output PWM 2 = 0 (cf. inverted current with Peltier)
         input: percent_value (0 ..100)
         :return: none
         """
-        # must multiple value by 10 beacause unit is set to 0.1% --> to do
-        self.write_register(0x1010, percent_value)
+        # must multiple value by 10 beacause unit is set to 0.1% --> to do, to check
+        if (self._control_Method == self.ctrl_Method_List['Manual']) & (self._output_PWM_2 == 0):
+            self._output_PWM_1 = percent_value
+            self.write_register(0x1012, percent_value, number_of_decimals=1)
 
-    def cool(self, percent_value):
+    def get_Output_PWM_2(self):
         """
-        Cool the stage with a percent value that control the time
-        during the cool is set ON.
-        Works only when Control method is on Manual_Tuning
-        Warning: Activate Output value read and write of Output 2 so
-                 cool if configuration is done with output2 <-> cool
+        Get the output PWM stage percent value that control the time
+        during the power is set ON.
+        Warning: Activate Output value read Output 2 so cool control
+                 if configuration is done with output2 <-> cool
         input: percent_value (0 ..100)
         :return: none
         """
         # must multiple value by 10 beacause unit is set to 0.1% --> to do
-        self.write_register(0x1011, percent_value)
+        self._output_PWM_2 = self.read_register(0x1013, number_of_decimals=1)
+        return self._output_PWM_2
+
+    def set_Output_PWM_2(self, percent_value):
+        """
+        Set the output PWM stage with a percent value that control the time
+        during the power is set ON.
+        Works only when Control method is on Manual_Tuning
+        Warning: Activate Output value write of Output 2 so
+                 if configuration is done with output2 <-> cool
+                 activation possible ONLY when Manual Tuning Mode and output PWM 1 = 0 (cf. inverted current with Peltier)
+        input: percent_value (0 ..100)
+        :return: none
+        """
+        # must multiple value by 10 beacause unit is set to 0.1% --> to do
+        if (self._control_Method == self.ctrl_Method_List['Manual']) & (self._output_PWM_1 == 0):
+            self._output_PWM_2 = percent_value
+            self.write_register(0x1013, percent_value, number_of_decimals=1)
+
+    def get_All_PID_values(self):
+        """
+        Get all PID aprameters from the CN7500 controller
+        :return:
+        """
+        self._PID_Settings['PID0'] = self.get_PID_values(0)
+        self._PID_Settings['PID1'] = self.get_PID_values(1)
+        self._PID_Settings['PID2'] = self.get_PID_values(2)
+        self._PID_Settings['PID3'] = self.get_PID_values(3)
+
 
     def get_PID_values(self, PID_Profil_No: int):
         """
@@ -329,7 +490,6 @@ class IOmegaCN7500Controller(OmegaCN7500):
         self.write_register(0x100B, value=PID_param["dn"], signed=True)
         # Write iof = integral deviation settings (0 .. 100% unit 0.1%)
         self.write_register(0x100C, value=PID_param["iofn"], number_of_decimals=1, signed=True)
-
 
     def get_Additionnal_Control_Parameters(self):
         """
@@ -406,9 +566,73 @@ class IOmegaCN7500Controller(OmegaCN7500):
         # Write DeAd = Dead Band (-999 ~ 9999)
         self.write_register(0x100F, Additionnal_Ctrl_Param_values["dEAd"], signed=True)
 
+    def get_System_Configuration_Parameters(self):
+        """
+        Get a set of system configuration parameters:
+            Communication_Write_Enable:     Communication write-in selection
+                                            Communication write in disabled: 0 (default), Communication write in enabled: 1
+            Setting_Lock_State :            0 : Normal, 1 : All setting lock, 11 : Lock others than SV value
+            Selected_Temperature_Unit:      Temperature unit display selection: oC / linear input (default) : 1 , oF : 0
+            Selected_Heating_Colling_Ctrl:  Heating/Cooling control selection
+                                            0: Heating, 1: Cooling, 2: Heating/Cooling, 3: Cooling/Heating
+        :return: dict containing parameters
+        """
+
+        # Read Communication_Write_Enable
+        # Communications Write Function Feature. Allows parameters
+        # to be changed via the RS-485 communications. Setting to Off = 0
+        # prevents any changes from remote users; Otherwise setting to On = 1
+        Communication_Write_Enable = self.read_bit(0x0810)
+
+        # Read Set front panel security lock.
+        # 0:  Normal, not locked
+        # 1:  Lock all settings
+        # 11: Lock all settings except the set point.
+        Setting_Lock_State = self.read_register(0x102C)
+
+        # Selected_Temperature_Unit
+        # °C / linear input (default) : 1 , °F : 0
+        Selected_Temperature_Unit = self.read_bit(0x0811)
+
+        # Read Heat/Cool Selection parameter. Assigns output 1 and output 2 to be
+        # either heat or cool.
+        # 0: HEAt = Output 1 = Heating
+        # 1: CooL = Output 1 = Cooling
+        # 2: H1C2 = Output 1 = Heating; Output 2 = Cooling
+        # 3: H2C1 = Output 1 = Cooling; Output 2 = Heating
+        Selected_Heating_Cooling_Ctrl = self.read_register(0x1006)
+
+        System_Config_Ctrl_Param_values = {"Comm_Enable":         Communication_Write_Enable,
+                                           "Set_Lock_State":      Setting_Lock_State,
+                                           "Temp_Unit":           Selected_Temperature_Unit,
+                                           "Heat_Cool_Setting":   Selected_Heating_Cooling_Ctrl}
+
+        print(System_Config_Ctrl_Param_values)
+        return System_Config_Ctrl_Param_values
+
+    def set_System_Configuration_Parameters(self, System_Config_Ctrl_Param_values: dict):
+        """
+        Set the system Control configuration parameters:
+            Communication_Write_Enable:     Communication write-in selection
+                                            Communication write in disabled: 0 (default), Communication write in enabled: 1
+            Setting_Lock_State :
+            Selected_Temperature_Unit:      Temperature unit display selection: oC / linear input (default) : 1 , oF : 0
+            Selected_Heating_Colling_Ctrl:  Heating/Cooling control selection
+                                            0: Heating, 1: Cooling, 2: Heating/Cooling, 3: Cooling/Heating
+        """
+        # Write Communication_Write_Enable
+        self.write_bit(0x0810, System_Config_Ctrl_Param_values["Comm_Enable"])
+        # Write Setting_Lock_State
+        self.write_register(0x102C, System_Config_Ctrl_Param_values["Set_Lock_State"])
+        # Write Selected_Temperature_Unit
+        self.write_bit(0x0811, System_Config_Ctrl_Param_values["Temp_Unit"])
+        # Write Selected_Heating_Colling_Ctrl
+        self.write_register(0x1006, System_Config_Ctrl_Param_values["Heat_Cool_Setting"])
+
+
     def AutoTune(self, State: bool):
         """
-        Trun ON or OFF the AutoTune function
+        Turn ON or OFF the AutoTune function
         :param State: True or False regarding the desired Autotune function state
         :return:
         """
@@ -471,6 +695,53 @@ class IOmegaCN7500Controller(OmegaCN7500):
         """
         self.write_register(0x1008, second_cycle, number_of_decimals=1, signed=True)
 
+    def get_Heating_Output_Pwd_Percent(self):
+        """
+        Get the percentage of heating output (pwm value between 0 to 100%)
+        Warning: heating affected to output 1
+        :return:  Heating_Output_Pwd_Percent
+        """
+        return self.read_register(0x1012, 1)
+
+    def set_Heating_Output_Pwd_Percent(self, heating_output_percent_value: float):
+        """
+        set the percentage of heating output (pwm value between 0 to 100%)
+        Warning: heating affected to output 1
+        """
+        self.write_register(0x1012, heating_output_percent_value, number_of_decimals=1, signed=True)
+
+    def get_Cooling_Output_Pwd_Percent(self):
+        """
+        Get the percentage of cooling output (pwm value between 0 to 100%)
+        Warning: cooling affected to output 2
+        :return:  Cooling_Output_Pwd_Percent
+        """
+        return self.read_register(0x1013, 1)
+
+    def set_Cooling_Output_Pwd_Percent(self, cooling_output_percent_value: float):
+        """
+        set the percentage of cooling output (pwm value between 0 to 100%)
+        Warning: cooling affected to output 1
+        """
+        self.write_register(0x1013, cooling_output_percent_value, number_of_decimals=1, signed=True)
+
+    def get_status(self):
+        """
+        Get the status of the instrument:
+            - bit 0: Alarm3
+            - bit 1: Alarm2
+            - bit 2: °C
+            - bit 3:  F
+            - bit 4: Alarm 1
+            - bit 5: OUT2
+            - bit 6: OUT1
+            - bit 7: AT (Auto Tune)
+
+        :return:
+        """
+
+        return self.read_register(0x102A, 0)
+
 #==========================================================
 # Main application part
 #==========================================================
@@ -480,6 +751,7 @@ if __name__ == "__main__":
     # Press the green button in the gutter to run the script.
     print('Python Test Program IOmega CN7500 Controller')
     print('------------------------------------------\n')
+
 
 
     # selection of a available com port
@@ -506,25 +778,60 @@ if __name__ == "__main__":
     version = CN7500.get_firmware_version()
     print(version)
 
+    input('Press Enter to fill PID parameters from controller')
+    CN7500.get_All_PID_values()
+
+    input('Press Enter to get control method')
+    method = CN7500.get_Control_Method()
+    print(method)
+
     input('Press Enter to get temperature')
-    current_Temperature = CN7500.get_temperature()
+    current_Temperature = CN7500.get_Current_Temperature()
     print(current_Temperature)
 
     input('Press Enter to get set point value')
-    set_point = CN7500.get_setpoint()
+    set_point = CN7500.get_TemperatureSetpoint()
     print(set_point)
 
     new_set_point = input('Input set point value in °C')
-    CN7500.set_setpoint(float(new_set_point))
+    CN7500.set_TemperatureSetpoint(float(new_set_point))
 
     input('Press Enter to start controller')
     CN7500.start()
 
     input('Press Enter to get temperature')
-    current_Temperature = CN7500.get_temperature()
+    current_Temperature = CN7500.get_Current_Temperature()
     print(current_Temperature)
+
+    input('Press Enter to get status')
+    current_status = CN7500.get_status()
+    print(bin(current_status))
+
+    CN75000IOmegaStatus = IOmegaStatus(current_status)
+
+    if (CN75000IOmegaStatus.ALARM3 in CN75000IOmegaStatus):
+        print('-- ALARM3 --')
+    if (CN75000IOmegaStatus.ALARM2 in CN75000IOmegaStatus):
+        print('-- ALARM2 --')
+    if (CN75000IOmegaStatus.DEG_F in CN75000IOmegaStatus):
+        print('--  F ---')
+    if (CN75000IOmegaStatus.DEG_C in CN75000IOmegaStatus):
+        print('-- °C ---')
+    if (CN75000IOmegaStatus.ALARM1 in CN75000IOmegaStatus):
+        print('-- ALARM1 ---')
+    if (CN75000IOmegaStatus.OUT1 in CN75000IOmegaStatus):
+        print('-- OUT1 on ---')
+    if (CN75000IOmegaStatus.OUT2 in CN75000IOmegaStatus):
+        print('-- OUT2 on ---')
+    if (CN75000IOmegaStatus.AT in CN75000IOmegaStatus):
+        print('-- AUTO TUNE RUNNING ---')
+
 
     input('Press Enter to stop controller')
     CN7500.stop()
+
+    input('Press Enter to get status')
+    current_status = CN7500.get_status()
+    print(bin(current_status))
 
     CN7500.serial.close()
