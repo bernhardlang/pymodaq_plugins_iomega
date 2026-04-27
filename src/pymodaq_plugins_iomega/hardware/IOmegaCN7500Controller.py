@@ -45,10 +45,7 @@
 #            setFirst_Grp_Heating_Cooling_Cycle
 #            getSecond_Grp_Heating_Cooling_Cycle
 #            setSecond_Grp_Heating_Cooling_Cycle
-#            get_Heating_Output_Pwd_Percent
-#            set_Heating_Output_Pwd_Percent
-#            get_Cooling_Output_Pwd_Percent
-#            set_Cooling_Output_Pwd_Percent
+#
 #            get_status
 #
 # version:  1.0
@@ -107,7 +104,22 @@ class IOmegaCN7500Controller(OmegaCN7500):
                         3: 'Program'
                        }
 
-    heating_Cooling_Ctrl_List = ['Heating', 'Cooling', 'Heating-Cooling', 'Cooling-Heating']
+    ctrl_Method_List = ['PID',
+                        'ON/OFF',
+                        'Manual',
+                        'Program'
+                        ]
+
+    temperature_Ctrl_Mode_Dict = {0: 'Heating',
+                                 1: 'Cooling',
+                                 2: 'Heating-Cooling',
+                                 3: 'Cooling-Heating'
+                                }
+
+    heating_Cooling_Ctrl_List = ['Heating',
+                                 'Cooling',
+                                 'Heating-Cooling',
+                                 'Cooling-Heating']
 
     def __init__(self):  # object constructor
         """ method called at object creation (implementation)
@@ -147,7 +159,8 @@ class IOmegaCN7500Controller(OmegaCN7500):
         self._initialized = False
 
         # internal CN75000 attributes
-        self._control_Method = 'PID'
+        self._temperature_Ctrl_Mode = 'Heating-Cooling'
+        self._control_Method        = 'PID'
 
         self._current_Temperature = 25
         self._current_TemperatureSetpoint = 25
@@ -358,15 +371,36 @@ class IOmegaCN7500Controller(OmegaCN7500):
     def set_Control_Method(self, control_Method):
         """
         Set the selected control method: 'PID', 'ON/OFF', 'Manual', 'Program'
-        :return: control method
+        :return: none
         """
         for k, v in self.ctrl_Method_Dict.items():
             if v == control_Method:
-               key = k
-               break
+                key = k
+                break
 
         self._control_Method = self.ctrl_Method_Dict[key]
-        self.write_register(0x1005,key)
+        self.write_register(0x1005, key)
+
+    def get_temperature_Control_mode(self):
+        """
+        Get the selected temperature control mode: 'Heating', 'Cooling', 'Heating-Cooling', 'Cooling-Heating'
+        :return: temperature control mode
+        """
+        self._temperature_Ctrl_Mode = self.temperature_Ctrl_Mode_Dict[self.read_register(0x1006)]
+        return self._temperature_Ctrl_Mode
+
+    def set_temperature_Control_mode(self, temperature_control_Mode):
+        """
+         Set the selected temperature control mode: 'Heating', 'Cooling', 'Heating-Cooling', 'Cooling-Heating'
+        :return: none
+        """
+        for k, v in self.temperature_Ctrl_Mode_Dict.items():
+            if v == temperature_control_Mode:
+                key = k
+                break
+
+        self._temperature_Ctrl_Mode = self.temperature_Ctrl_Mode_Dict[key]
+        self.write_register(0x1005, key)
 
     def get_Output_PWM_1(self):
         """
@@ -392,10 +426,12 @@ class IOmegaCN7500Controller(OmegaCN7500):
         input: percent_value (0 ..100)
         :return: none
         """
-        # must multiple value by 10 beacause unit is set to 0.1% --> to do, to check
-        if (self._control_Method == self.ctrl_Method_List['Manual']) & (self._output_PWM_2 == 0):
-            self._output_PWM_1 = percent_value
-            self.write_register(0x1012, percent_value, number_of_decimals=1)
+        # check if we are in Manual mode
+        if self.get_Control_Method() == 'Manual':
+            # check if out2 = 0 (cf Peltier alimentation request)
+            if self.get_Output_PWM_2() == 0:
+                self._output_PWM_1 = percent_value
+                self.write_register(0x1012, percent_value, number_of_decimals=1)
 
     def get_Output_PWM_2(self):
         """
@@ -421,10 +457,13 @@ class IOmegaCN7500Controller(OmegaCN7500):
         input: percent_value (0 ..100)
         :return: none
         """
-        # must multiple value by 10 beacause unit is set to 0.1% --> to do
-        if (self._control_Method == self.ctrl_Method_List['Manual']) & (self._output_PWM_1 == 0):
-            self._output_PWM_2 = percent_value
-            self.write_register(0x1013, percent_value, number_of_decimals=1)
+
+        # check if we are in Manual mode
+        if self.get_Control_Method() == 'Manual':
+            # check if out1 = 0 (cf Peltier alimentation request)
+            if self.get_Output_PWM_1() == 0:
+                self._output_PWM_2 = percent_value
+                self.write_register(0x1013, percent_value, number_of_decimals=1)
 
     def get_All_PID_values(self):
         """
@@ -627,7 +666,10 @@ class IOmegaCN7500Controller(OmegaCN7500):
         # Write Selected_Temperature_Unit
         self.write_bit(0x0811, System_Config_Ctrl_Param_values["Temp_Unit"])
         # Write Selected_Heating_Colling_Ctrl
-        self.write_register(0x1006, System_Config_Ctrl_Param_values["Heat_Cool_Setting"])
+        #self.write_register(0x1006, System_Config_Ctrl_Param_values["Heat_Cool_Setting"])
+        selected_string_item = System_Config_Ctrl_Param_values["Heat_Cool_Setting"]
+        value = self.heating_Cooling_Ctrl_List.index(selected_string_item)
+        self.write_register(0x1006, value)
 
 
     def AutoTune(self, State: bool):
@@ -695,35 +737,6 @@ class IOmegaCN7500Controller(OmegaCN7500):
         """
         self.write_register(0x1008, second_cycle, number_of_decimals=1, signed=True)
 
-    def get_Heating_Output_Pwd_Percent(self):
-        """
-        Get the percentage of heating output (pwm value between 0 to 100%)
-        Warning: heating affected to output 1
-        :return:  Heating_Output_Pwd_Percent
-        """
-        return self.read_register(0x1012, 1)
-
-    def set_Heating_Output_Pwd_Percent(self, heating_output_percent_value: float):
-        """
-        set the percentage of heating output (pwm value between 0 to 100%)
-        Warning: heating affected to output 1
-        """
-        self.write_register(0x1012, heating_output_percent_value, number_of_decimals=1, signed=True)
-
-    def get_Cooling_Output_Pwd_Percent(self):
-        """
-        Get the percentage of cooling output (pwm value between 0 to 100%)
-        Warning: cooling affected to output 2
-        :return:  Cooling_Output_Pwd_Percent
-        """
-        return self.read_register(0x1013, 1)
-
-    def set_Cooling_Output_Pwd_Percent(self, cooling_output_percent_value: float):
-        """
-        set the percentage of cooling output (pwm value between 0 to 100%)
-        Warning: cooling affected to output 1
-        """
-        self.write_register(0x1013, cooling_output_percent_value, number_of_decimals=1, signed=True)
 
     def get_status(self):
         """

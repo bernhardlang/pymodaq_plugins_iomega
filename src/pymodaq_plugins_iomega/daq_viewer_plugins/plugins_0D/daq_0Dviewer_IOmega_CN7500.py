@@ -40,8 +40,8 @@ class DAQ_0DViewer_IOmega_CN7500(DAQ_Viewer_base):
         ]},
         {'title': 'Regulation:', 'name': 'regulation', 'type': 'group', 'children': [
             {'title': 'Setpoint:', 'name': 'CN7500_set_setpoint', 'type': 'float', 'value': 25, 'default': 25,
-             'min': 20,
-             'max': 50, 'tip': 'set the temperature setpoint'},
+             'min': -100,
+             'max': 200, 'tip': 'set the temperature setpoint'},
             {'title': 'Run:', 'name': 'CN7500_run', 'type': 'led_push', 'value': False, 'default': False,
              'tip': 'Turn the CN7500 regulation ON or OFF'},
         ]}
@@ -121,9 +121,9 @@ class DAQ_0DViewer_IOmega_CN7500(DAQ_Viewer_base):
         # initialize viewers panel with the future type of data
         self.dte_signal_temp.emit(DataToExport(name='CN7500',
                                                data=[DataFromPlugins(name='CN7500',
-                                                                    data=[np.array([0]), np.array([0])],
+                                                                    data=[np.array([0]), np.array([0]), np.array([0]), np.array([0])],
                                                                     dim='Data0D',
-                                                                    labels=['Current Temperature', 'Setpoint Temperature'])]))
+                                                                    labels=['Current Temperature', 'Setpoint Temperature', 'Out1', 'Out2'])]))
 
         if initialized:
             self.settings.child('serial', 'serial_port').setOpts(readonly=True)
@@ -158,11 +158,13 @@ class DAQ_0DViewer_IOmega_CN7500(DAQ_Viewer_base):
         # ata_tot = self.controller.your_method_to_start_a_grab_snap()
         currentSetPoint = self.controller.get_setpoint()
         currentProcessTemperatureValue = self.controller.get_Current_Temperature()
-        data_tot = [np.array([currentProcessTemperatureValue]), np.array([currentSetPoint])]
+        PWM_Out1 = self.controller.get_Output_PWM_1()
+        PWM_Out2 = self.controller.get_Output_PWM_2()
+        data_tot = [np.array([currentProcessTemperatureValue]), np.array([currentSetPoint]), np.array([PWM_Out1]), np.array([PWM_Out2])]
 
         self.dte_signal.emit(DataToExport(name='CN7500',
                                           data=[DataFromPlugins(name='CN7500', data=data_tot,
-                                                                dim='Data0D', labels=['Process Temperature', 'Setpoint Temperature'])]))
+                                                                dim='Data0D', labels=['Process Temperature', 'Setpoint Temperature', 'Out1', 'Out2'])]))
         #########################################################
         # asynchrone version (non-blocking function with callback)
         # self.controller.your_method_to_start_a_grab_snap(self.callback)  # when writing your own plugin replace this line

@@ -37,8 +37,8 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
     Heating_Cooling_Ctrl_List = ['Heating', 'Cooling', 'Heating-Cooling', 'Cooling-Heating']
 
     is_multiaxes = False  # for your plugin set to True if this plugin is controlled for a multiaxis controller
-    _axis_names: Union[List[str], Dict[str, int]] = ['Axis1', 'Axis2']  # for your plugin: complete the list
-    _controller_units: Union[str, List[str]] = ['°C','°C']  # for your plugin: put the correct unit here, it could be
+    _axis_names: Union[List[str], Dict[str, int]] = ['Temp']  # for your plugin: complete the list
+    _controller_units: Union[str, List[str]] = ['°C']  # for your plugin: put the correct unit here, it could be
     # a single str (the same one is applied to all axes) or a list of str (as much as the number of axes)
     _epsilon: Union[float, List[float]] = 0.1  # replace this by a value that is correct depending on your controller
     # it could be a single float of a list of float (as much as the number of axes)
@@ -63,6 +63,14 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
                   {'title': 'Out 1:', 'name': 'CN7500_status_Out1', 'type': 'led', 'value': False, 'readonly': True,  'tip': 'Output 1 is running'},
                   {'title': 'Out 2:', 'name': 'CN7500_status_Out2', 'type': 'led', 'value': False, 'readonly': True,  'tip': 'Output 2 is running'},
                   {'title': 'Auto Tune:', 'name': 'CN7500_status_AT', 'type': 'led', 'value': False, 'readonly': True,  'tip': 'Auto Tune is running'}
+              ]},
+
+              # OUTPUT PWM 1 & 2 in Manual Mode
+              {'title': 'Manual:', 'name': 'manual_mode', 'type': 'group', 'visible': False, 'children': [
+                  {'title': 'PWM output 1:', 'name': 'CN7500_Out1', 'type': 'slide', 'value': 0, 'default': 0,
+                   'step': 1, 'min': 0, 'max': 100, 'subtype': 'linear', 'int': True},
+                  {'title': 'PWM output 2:', 'name': 'CN7500_Out2', 'type': 'slide', 'value': 0, 'default': 0,
+                   'step': 1, 'min': 0, 'max': 100, 'subtype': 'linear', 'int': True}
               ]},
 
               # CN7500 parameters
@@ -154,7 +162,7 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
                      'tip': '0 : Normal, 1 : All setting lock, 11 : Lock others than SV value'},
                     {'title': 'Temperature Unit', 'name': 'Temperature_Unit_Deg_C', 'type': 'led_push', 'value': True, 'default': True,
                      'tip': 'Temperature Unit Selection: °C=On F=Off'},
-                    {'title': 'Heating/Cooling control selection', 'name': 'H_C_Ctrl_Selection', 'type': 'list', 'limits': Heating_Cooling_Ctrl_List,
+                    {'title': 'Heating/Cooling control', 'name': 'H_C_Ctrl_Selection', 'type': 'list', 'limits': Heating_Cooling_Ctrl_List,
                      'tip': '0: Heating, 1: Cooling, 2: Heating/Cooling, 3: Cooling/Heating'},
                 ]}
 
@@ -182,6 +190,12 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
 
         pos = DataActuator(data=self.controller.get_Current_Temperature())
         pos = self.get_position_with_scaling(pos)
+
+        # read PWM output 1 & 2
+        PWM_output_1 = self.controller.get_Output_PWM_1()
+        PWM_output_2 = self.controller.get_Output_PWM_2()
+        #self.settings.child('manual_mode', 'CN7500_Out1').setValue(PWM_output_1)
+        #self.settings.child('manual_mode', 'CN7500_Out2').setValue(PWM_output_2)
 
         # read status
         current_status = self.controller.get_status()
@@ -263,8 +277,32 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
 
         elif param.name() == "CN7500_Modes":
             # set the process mode -> to do
-            mode = self.settings.child('CN7500_Internal_Param', 'CN7500_Modes_Param','CN7500_Modes').value()
-            self.controller.set_control_mode(mode)
+            #mode = self.settings.child('manual_mode', 'CN7500_Modes_Param', 'CN7500_Modes').value()
+            mode = param.value()
+            self.controller.set_Control_Method(mode)
+            if mode == 'Manual':
+                self.settings.child('manual_mode').setOpts(visible=True)
+            else:
+                self.settings.child('manual_mode').setOpts(visible=False)
+
+        elif param.name() == "CN7500_Out1":
+
+            percent_Out1_value = self.settings.child('manual_mode', 'CN7500_Out1').value()
+            # other output channel must be 0 (cf. Peltier use)
+            if self.settings.child('manual_mode', 'CN7500_Out2').value() > 0:
+                self.controller.set_Output_PWM_2(0)
+                self.settings.child('manual_mode', 'CN7500_Out2').setValue(0)
+
+            self.controller.set_Output_PWM_1(percent_Out1_value)
+
+        elif param.name() == "CN7500_Out2":
+            percent_Out2_value = self.settings.child('manual_mode', 'CN7500_Out2').value()
+            # other output channel must be 0 (cf. Peltier use)
+            if self.settings.child('manual_mode', 'CN7500_Out1').value() > 0:
+                self.controller.set_Output_PWM_1(0)
+                self.settings.child('manual_mode', 'CN7500_Out1').setValue(0)
+
+            self.controller.set_Output_PWM_2(percent_Out2_value)
 
         elif param.name() == "Auto_Tune":
             if param.value():
@@ -415,7 +453,14 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
                 self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Comm_Write_Enable').setValue(System_Config_param["Comm_Enable"])
                 self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Setting_Lock_State').setValue(System_Config_param["Set_Lock_State"])
                 self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Temperature_Unit_Deg_C').setValue(System_Config_param["Temp_Unit"])
-                self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'H_C_Ctrl_Selection').setValue(System_Config_param["Heat_Cool_Setting"])
+                #self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'H_C_Ctrl_Selection').setValue(System_Config_param["Heat_Cool_Setting"])
+                # !!! ctrl_selected_value must be a string contained in the lst such as 'Cooling'
+                ctrl_selected_value = System_Config_param["Heat_Cool_Setting"]
+                ctrl_selected_string_value = self.controller.temperature_Ctrl_Mode_Dict[ctrl_selected_value]
+
+                self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'H_C_Ctrl_Selection').setValue(ctrl_selected_string_value)
+
+
 
                 time.sleep(0.25)
                 self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'System_Config_read').setValue(False)
@@ -426,10 +471,11 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
             if param.value():
                 # write System Configuration parameters
                 System_Config_param = {
-                    "Comm_Enable":      self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Comm_Write_Enable').value(),
-                    "Set_Lock_State":   self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Setting_Lock_State').value(),
-                    "Temp_Unit":        self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Temperature_Unit_Deg_C').value(),
-                    "Heat_Cool_Setting":self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'H_C_Ctrl_Selection').value()}
+                                    "Comm_Enable":      self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Comm_Write_Enable').value(),
+                                    "Set_Lock_State":   self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Setting_Lock_State').value(),
+                                    "Temp_Unit":        self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'Temperature_Unit_Deg_C').value(),
+                                    "Heat_Cool_Setting":self.settings.child('CN7500_Internal_Param', 'CN7500_System_Config_param', 'H_C_Ctrl_Selection').value()
+                                    }
 
                 self.controller.set_System_Configuration_Parameters(System_Config_param)
                 time.sleep(0.25)
