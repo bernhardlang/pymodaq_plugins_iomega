@@ -59,11 +59,13 @@ class CustomAppCN7500TemperatureControllerForTP(gutils.CustomApp):
         self.raw_data               = None
 
         self.target_temperature_label:      QLabel
-        self.target_temperature:            QDoubleSpinBox
+        self.target_temperature_display:    QDoubleSpinBox
 
         self.runToggleButton:               QPushButton
-        self.current_temperature:           QLabel
-        self.current_temperature_display:   QDoubleSpinBox
+
+        self.current_temperature_label:     QLabel
+        self.current_temperature_display:   QLabel
+
         self.setup_ui()
 
     def setup_docks(self):
@@ -122,25 +124,29 @@ class CustomAppCN7500TemperatureControllerForTP(gutils.CustomApp):
         self.target_temperature_label = QLabel('Target Temperature')
 
         # Target temperature widget
-        self.target_temperature = QtWidgets.QDoubleSpinBox()        # create the widget for double float
-        self.target_temperature.setDecimals(1)
-        font = QFont('Helvetica', 80)                               # set font and its size
-        self.target_temperature.setFont(font)                       # set the font to the widget
-        self.target_temperature.setAlignment(Qt.AlignCenter)
+        self.target_temperature_display = QtWidgets.QDoubleSpinBox()        # create the widget for double float
+        self.target_temperature_display.setDecimals(1)
+        font = QFont('Helvetica', 80)                                       # set font and its size
+        self.target_temperature_display.setFont(font)                       # set the font to the widget
+        #self.target_temperature_display
+        self.target_temperature_display.setAlignment(Qt.AlignCenter)
 
         # ON/OFF toggle button (relative to Run) widget
-        self.runToggleButton = QPushButton('Start')
+        self.runToggleButton = QPushButton('ON')
         self.runToggleButton.setCheckable(True)
-        self.runToggleButton.setFixedWidth(120)
+        self.runToggleButton.setFixedWidth(100)
         self.runToggleButton.setText("ON")
-        self.runToggleButton.setStyleSheet("color:white; background-color: green")
+        self.runToggleButton.setStyleSheet("color:green; background-color: black")
         self.runToggleButton.clicked.connect(self.toggleRun)
 
+        # Current temperature label widget
+        self.current_temperature_label = QLabel('Current Temperature')
+
         # Set current temperature
-        self.current_temperature = QtWidgets.QLabel('25.1')  # create the widget to display current temperature
+        self.current_temperature_display = QtWidgets.QLabel('25.1')  # create the widget to display current temperature
         font = QFont('Helvetica', 80)           # set font and its size
-        self.current_temperature.setFont(font)  # set the font to the widget
-        self.current_temperature.setStyleSheet("color:white; background-color: green")
+        self.current_temperature_display.setFont(font)  # set the font to the widget
+        self.current_temperature_display.setStyleSheet("color:white; background-color: green")
 
 
 
@@ -153,70 +159,21 @@ class CustomAppCN7500TemperatureControllerForTP(gutils.CustomApp):
 
 
         # Add the differents widgets in the dock
-        #self.docks['CN7500_Control'].addWidget(self.target_temperature_label, row=0, col=0)
+
+        # Target temperature
         self.docks['CN7500_Control'].layout.addWidget(self.target_temperature_label, 0, 0, alignment=Qt.AlignmentFlag.AlignCenter)
-        self.docks['CN7500_Control'].addWidget(self.target_temperature, row=1, col=0)           # rowspan=1,add the widget setting tree in
+        self.docks['CN7500_Control'].layout.addWidget(self.target_temperature_display, 1, 0)
 
-        # to be able to set the alignment use the ay below !
+
+        # ON/OFF button
         self.docks['CN7500_Control'].layout.addWidget(self.runToggleButton, 2, 0, alignment=Qt.AlignmentFlag.AlignCenter)
-        self.docks['CN7500_Control'].layout.addWidget(self.current_temperature, 3, 0, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        # Current temperature
+        self.docks['CN7500_Control'].layout.addWidget(self.current_temperature_label, 3, 0, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.docks['CN7500_Control'].layout.addWidget(self.current_temperature_display, 4, 0, alignment=Qt.AlignmentFlag.AlignCenter)
 
 
-        # self.docks['CN7500_Control'].layout.addWidget(self.stopBtn, 1, 1, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        self.docks['CN7500_Control'].setContentsMargins(10,10, 10, 10)     # add margin relative to the dock
-        # self.docks['CN7500_Control'].setMaximumSize(400,400)
-        # self.docks['CN7500_Control'].setMinimumSize(400,400)
-
-
-        # self.docks['CN7500_Control'].layout.addWidget(self.Btn1, 2, 0, alignment = Qt.AlignmentFlag.AlignCenter)
-
-        # self.docks['CN7500_Control'].layout.addWidget(self.Btn1, row=2, column=0)
-
-        # self.target_temperature.setAlignment(Qt.AlignCenter)
-        """
-        self.runToggleButton.setCheckable(True)
-        self.runToggleButton.setFixedWidth(120)
-        self.runToggleButton.setText("ON")
-        self.runToggleButton.setStyleSheet("color:white; background-color: green")
-        self.runToggleButton.clicked.connect(self.toggleRun)
-        """
-
-        # Setting Dock
-        # -------------
-        # self.docks['CN7500_Settings'] = gutils.Dock('CN7500 Settings')
-        # self.dockarea.addDock(self.docks['CN7500_Settings'], 'right', self.docks['Custom_CN7500_Viewer'])  # add this dock to the dock area (windows)
-        # Add the settings tree
-        # self.docks['CN7500_Settings'].addWidget(self.settings_tree, row=0, col=0, colspan=2)  # rowspan=1,add the widget setting tree in
-
-        # Display current temperature Dock
-        # -----------------------------
-        # dock_current_temperature = Dock('Current Temperature', size=(200, 200))
-        # self.dockarea.addDock(dock_current_temperature, 'bottom', self.docks['CN7500_Settings'])
-        # self.current_temperature_display = QtWidgets.QLabel()
-        # dock_current_temperature.addWidget(self.current_temperature_display)
-
-        # set apparence (color...)
-        #font = QFont('Helvetica', 80)  # set font and its size
-        # self.current_temperature_display.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum)
-
-        #self.current_temperature_display.setFont(font)
-        #self.current_temperature_display.setAutoFillBackground(True)  # to enable background color
-        #palette_0 = QPalette()  # create a palette
-        #palette_0.setColor(QPalette.Window, Qt.green)  # set background color
-        #palette_0.setColor(QPalette.WindowText, Qt.white)  # set text color
-
-
-        #self.current_temperature_display.setAlignment(Qt.AlignCenter)
-
-        #self.current_temperature_display.setPalette(palette_0)  # add the palette to the label
-        #self.current_temperature_display.setFont(font)  # add font to the label
-        #self.current_temperature_display.setStyleSheet("color:green; background-color: black")
-        #self.current_temperature_display.setText('--.-')
-
-
-
-
+        self.docks['CN7500_Control'].setContentsMargins(10, 10, 10, 10)     # add margin relative to the dock
 
         # ----------------------------
         # A IOmega DockArea (0DViewer)
@@ -241,13 +198,9 @@ class CustomAppCN7500TemperatureControllerForTP(gutils.CustomApp):
         # ----------------------------
 
         # Dock area for IOmega CN7500  (NB: detected as a actuator (daq_move_plugin) with the dashboard)
-        #self.daq_Move_Area = DockArea()
         self.daq_move_widget = QtWidgets.QWidget()
         self.actuator = DAQ_Move(self.daq_move_widget, ui_identifier='Original',
                                  title='A IOmega Ctrl')
-
-        #self.actuator = DAQ_Move(self.daq_Move_Area, ui_identifier='Original',
-        #                         title='A IOmega Ctrl')
 
         # set its type to 'IOmega' actuator
         self.actuator.actuator = 'IOmega_CN7500'  # its identifier, its name (cf. via dashboard)
@@ -357,7 +310,7 @@ class CustomAppCN7500TemperatureControllerForTP(gutils.CustomApp):
         target_temperature = data[0][1]
         #np.array([0])=current_temperature
         self.current_temperature_display.setText("{:.1f}".format(current_temperature[0]))   # format float to xx.x
-        self.target_temperature.setValue(target_temperature[0])             # format float to xx.x
+        self.target_temperature_display.setValue(target_temperature[0])             # format float to xx.x
         #self.lcd_current_temperature.setvalues([current_temperature])
         #self.lcd_target_temperature.setvalues([target_temperature])
 
