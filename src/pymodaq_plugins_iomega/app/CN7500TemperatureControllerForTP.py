@@ -1,4 +1,5 @@
-from qtpy import QtWidgets
+from qtpy import QtGui, QtWidgets
+from qtpy.QtCore import Qt
 
 from pymodaq_gui import utils as gutils
 from pymodaq_utils.config import Config
@@ -12,9 +13,6 @@ from pymodaq.control_modules.daq_move import DAQ_Move
 from pymodaq.utils.data import DataToExport
 import numpy as np
 from pymodaq_gui.utils.widgets import QLED, SpinBox
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import QPalette, QColor, QFont
-from PyQt6.QtCore import Qt
 
 
 # todo: replace here *pymodaq_plugins_template* by your plugin package name
@@ -121,18 +119,18 @@ class CustomAppCN7500TemperatureControllerForTP(gutils.CustomApp):
         # -------------
 
         # Target temperature label widget
-        self.target_temperature_label = QLabel('Target Temperature')
+        self.target_temperature_label = QtWidgets.QLabel('Target Temperature')
 
         # Target temperature widget
         self.target_temperature_display = QtWidgets.QDoubleSpinBox()        # create the widget for double float
         self.target_temperature_display.setDecimals(1)
-        font = QFont('Helvetica', 80)                                       # set font and its size
+        font = QtGui.QFont('Helvetica', 80)                                       # set font and its size
         self.target_temperature_display.setFont(font)                       # set the font to the widget
         #self.target_temperature_display
         self.target_temperature_display.setAlignment(Qt.AlignCenter)
 
         # ON/OFF toggle button (relative to Run) widget
-        self.runToggleButton = QPushButton('ON')
+        self.runToggleButton = QtWidgets.QPushButton('ON')
         self.runToggleButton.setCheckable(True)
         self.runToggleButton.setFixedWidth(100)
         self.runToggleButton.setText("ON")
@@ -140,11 +138,11 @@ class CustomAppCN7500TemperatureControllerForTP(gutils.CustomApp):
         self.runToggleButton.clicked.connect(self.toggleRun)
 
         # Current temperature label widget
-        self.current_temperature_label = QLabel('Current Temperature')
+        self.current_temperature_label = QtWidgets.QLabel('Current Temperature')
 
         # Set current temperature
         self.current_temperature_display = QtWidgets.QLabel('25.1')  # create the widget to display current temperature
-        font = QFont('Helvetica', 80)           # set font and its size
+        font = QtGui.QFont('Helvetica', 80)           # set font and its size
         self.current_temperature_display.setFont(font)  # set the font to the widget
         self.current_temperature_display.setStyleSheet("color:white; background-color: green")
 
