@@ -270,7 +270,7 @@ class CustomAppCN7500TemperatureControllerForTP(gutils.CustomApp):
         """
         # todo create and populate menu using actions defined above in self.setup_actions
         file_menu = menubar.addMenu('File')
-        self.affect_to('quit', file_menu)
+        #self.affect_to('quit', file_menu)
 
         pass
 

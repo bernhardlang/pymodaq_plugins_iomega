@@ -86,7 +86,7 @@ def select_Com_Port() -> serial.Serial.port :
     print('Selected COM Port : ' + selectedComPort)
     return(selectedComPort)
 
-class IOmegaCN7500Controller(OmegaCN7500, portname):
+class IOmegaCN7500Controller(OmegaCN7500):
     """
      Serial class controller for the IOmega CN7500 Controller
             This class relies on OmegaCN7500 (and implicitly on minimalmodbus and serial modules)
