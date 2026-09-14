@@ -65,7 +65,9 @@ class DAQ_0DViewer_IOmega_CN7500(DAQ_Viewer_base):
         """
 
         if param.name() == 'serial_port':
+            self.close()
             selected_COM_port = self.settings.child('serial', 'serial_port').value()
+            self.ini_detector()
 
         elif param.name() == "CN7500_set_setpoint":
             setpointvalue = self.settings.child('regulation', 'CN7500_set_setpoint').value()
@@ -106,9 +108,10 @@ class DAQ_0DViewer_IOmega_CN7500(DAQ_Viewer_base):
         # self.ini_detector_init(slave_controller=controller)
 
         if self.is_master:
-            self.controller = IOmegaCN7500Controller()  # instantiate you driver with whatever arguments are needed
+            self.controller = IOmegaCN7500Controller(selected_COM_port)  # instantiate you driver with whatever arguments are needed
             # set com port parameters
             self.controller.port = selected_COM_port
+            self.controller.set_port(selected_COM_port)
             self.controller.set_communication_parameters()
             self.controller.open_communication()
 
@@ -126,7 +129,7 @@ class DAQ_0DViewer_IOmega_CN7500(DAQ_Viewer_base):
                                                                     labels=['Current Temperature', 'Setpoint Temperature', 'Out1', 'Out2'])]))
 
         if initialized:
-            self.settings.child('serial', 'serial_port').setOpts(readonly=True)
+            #self.settings.child('serial', 'serial_port').setOpts(readonly=True)
             self.settings.child('regulation').show()
             # set the initial setpoint value
             setpointvalue = self.settings.child('regulation', 'CN7500_set_setpoint').value()
@@ -139,7 +142,7 @@ class DAQ_0DViewer_IOmega_CN7500(DAQ_Viewer_base):
     def close(self):
         """Terminate the communication protocol"""
         self.controller.close_communication()
-        self.settings.child('serial', 'serial_port').setOpts(readonly=False)
+        #self.settings.child('serial', 'serial_port').setOpts(readonly=False)
         self.settings.child('regulation', ).hide()
 
     def grab_data(self, Naverage=1, **kwargs):

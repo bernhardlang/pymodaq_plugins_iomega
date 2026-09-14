@@ -261,7 +261,9 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
             # see BrushlessDCMotor from the thorlabs plugin for an exemple
 
         if param.name() == 'serial_port':
+            self.close()
             selected_COM_port = self.settings.child('serial', 'serial_port').value()
+            self.ini_detector()
 
         elif param.name() == "CN7500_set_setpoint":
             setpointvalue = self.settings.child('regulation', 'CN7500_set_setpoint').value()
@@ -507,9 +509,10 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
         selected_COM_port = self.settings.child('serial', 'serial_port').value()
 
         if self.is_master:  # is needed when controller is master
-            self.controller = IOmegaCN7500Controller()      # arguments for instantiation!)
+            self.controller = IOmegaCN7500Controller(selected_COM_port)      # arguments for instantiation!)
 
             self.controller.port = selected_COM_port
+            self.controller.set_port(selected_COM_port)
             self.controller.set_communication_parameters()
             self.controller.open_communication()
 
@@ -520,7 +523,7 @@ class DAQ_Move_IOmega_CN7500(DAQ_Move_base):
             initialized = True
 
         if initialized:
-            self.settings.child('serial', 'serial_port').setOpts(readonly=True)
+            #self.settings.child('serial', 'serial_port').setOpts(readonly=True)
             self.settings.child('regulation').show()
             # set the initial limit value
             setpointvalue = self.settings.child('regulation', 'CN7500_set_setpoint').value()

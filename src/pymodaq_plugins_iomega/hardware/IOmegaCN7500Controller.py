@@ -86,7 +86,7 @@ def select_Com_Port() -> serial.Serial.port :
     print('Selected COM Port : ' + selectedComPort)
     return(selectedComPort)
 
-class IOmegaCN7500Controller(OmegaCN7500):
+class IOmegaCN7500Controller(OmegaCN7500, portname):
     """
      Serial class controller for the IOmega CN7500 Controller
             This class relies on OmegaCN7500 (and implicitly on minimalmodbus and serial modules)
@@ -121,24 +121,24 @@ class IOmegaCN7500Controller(OmegaCN7500):
                                  'Heating-Cooling',
                                  'Cooling-Heating']
 
-    def __init__(self):  # object constructor
+    def __init__(self, portname):  # object constructor
         """ method called at object creation (implementation)
             Port and baudrate will be configured later
             Init object attributes
 
         Parameter
         ----------
-            None
+            portname: used port
 
         """
 
         # init parent class by calling the parent constructor
-        OmegaCN7500.__init__(self,'/dev/ttyUSB0', 1)
+        OmegaCN7500.__init__(self, portname, 1)
 
         # Init a minimalmodabus instrument object
         #instrument = minimalmodbus.Instrument('/dev/ttyUSB0', 1, minimalmodbus.MODE_ASCII, debug=True)
 
-        self.serial.port = '/dev/ttyUSB0'  # this is the serial port name
+        self.serial.port = portname  # this is the serial port name
         self.serial.baudrate = 9600  # Baud
         self.serial.bytesize = 8
         self.serial.parity = serial.PARITY_NONE
@@ -251,6 +251,14 @@ class IOmegaCN7500Controller(OmegaCN7500):
         print('Parity     :',   self.serial.parity)
         print('Stopbits   :',   self.serial.stopbits)
         print('TimeOut (read):', self.serial.timeout)
+
+    def set_port(self, new_port):
+        """
+        Set the com port for serial communication
+        :param new_port:
+        :return: none
+        """
+        self.serial.port = new_port
 
     def set_baudrate(self, new_baudrate):
         """
@@ -771,7 +779,7 @@ if __name__ == "__main__":
     selected_Com_Port = select_Com_Port()
 
     # init CN7500 com object and open the port !
-    CN7500 = IOmegaCN7500Controller()
+    CN7500 = IOmegaCN7500Controller(selected_Com_Port)
     CN7500.port = selected_Com_Port
     CN7500.baudrate = 9600
 
